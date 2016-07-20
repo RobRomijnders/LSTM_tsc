@@ -27,7 +27,7 @@ def sample_batch(X_train,y_train,batch_size,num_steps):
     X_batch = X_train[ind_N,ind_start:ind_start+num_steps]
     y_batch = y_train[ind_N]
     return X_batch,y_batch
-    
+
 def check_test(X_test,y_test,batch_size,num_steps):
     """ Function to check the test_accuracy on the entire test set
     This is a workaround. I haven't figured out yet how to make the graph
@@ -47,26 +47,26 @@ def check_test(X_test,y_test,batch_size,num_steps):
 init_scale = 0.08           #Initial scale for the states
 max_grad_norm = 25          #Clipping of the gradient before update
 num_layers = 2              #Number of stacked LSTM layers
-num_steps = 32              #Number of steps to backprop over at every batch
+num_steps = 64              #Number of steps to backprop over at every batch
 hidden_size = 13            #Number of entries of the cell state of the LSTM
 max_iterations = 2000       #Maximum iterations to train
 batch_size = 30             #Batch size
+dropout = 0.8               # Keep probability of the dropout wrapper
 
 
 """Place holders"""
 input_data = tf.placeholder(tf.float32, [None, num_steps], name = 'input_data')
 targets = tf.placeholder(tf.int64, [None], name='Targets')
 #Used later on for drop_out. At testtime, we pass 1.0
-keep_prob = tf.placeholder("float", name = 'Drop_out_keep_prob')  
+keep_prob = tf.placeholder("float", name = 'Drop_out_keep_prob')
 
 initializer = tf.random_uniform_initializer(-init_scale,init_scale)
 with tf.variable_scope("model", initializer=initializer):
   """Define the basis LSTM"""
   with tf.name_scope("LSTM_setup") as scope:
     lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(hidden_size)
-    if keep_prob < 1:
-      lstm_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, output_keep_prob=keep_prob)
-      cell = tf.nn.rnn_cell.MultiRNNCell([lstm_cell] * num_layers)
+    lstm_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, output_keep_prob=keep_prob)
+    cell = tf.nn.rnn_cell.MultiRNNCell([lstm_cell] * num_layers)
     initial_state = cell.zero_state(batch_size, tf.float32)   #Initialize the zero_state. Note that it has to be run in session-time
     #We have only one input dimension, but we generalize our code for future expansion
     inputs = tf.expand_dims(input_data, 2)
@@ -81,19 +81,22 @@ with tf.variable_scope("model", initializer=initializer):
        if time_step > 0: tf.get_variable_scope().reuse_variables()
        (cell_output, state) = cell(inputs[:, time_step, :], state)
        outputs.append(cell_output)       #Now cell_output is size [batch_size x hidden_size]
+    avg_output = tf.reduce_mean(tf.pack(outputs),0)
+    size1 = tf.shape(avg_output)
+    size2 = tf.shape(cell_output)
 
 
 #Generate a classification from the last cell_output
 #Note, this is where timeseries classification differs from sequence to sequence
 #modelling. We only output to Softmax at last time step
 with tf.name_scope("Softmax") as scope:
-  with tf.variable_scope("Softmax_params"): 
+  with tf.variable_scope("Softmax_params"):
     # Both datasets have four output classes. Improve the code by changing the 4
     # into a hyperparameter
-    softmax_w = tf.get_variable("softmax_w", [hidden_size, 4])                         
-    softmax_b = tf.get_variable("softmax_b", [4])                               
-  logits = tf.matmul(cell_output, softmax_w) + softmax_b
-  #Use sparse Softmax because we have mutually exclusive classes    
+    softmax_w = tf.get_variable("softmax_w", [hidden_size, 4])
+    softmax_b = tf.get_variable("softmax_b", [4])
+  logits = tf.matmul(avg_output, softmax_w) + softmax_b
+  #Use sparse Softmax because we have mutually exclusive classes
   loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits,targets,name = 'Sparse_softmax')
   cost = tf.reduce_sum(loss) / batch_size
   #Pass on a summary to Tensorboard
@@ -123,7 +126,7 @@ with tf.name_scope("Optimizer") as scope:
     h1 = tf.histogram_summary(variable.name, variable)
     h2 = tf.histogram_summary(variable.name + "/gradients", grad_values)
     h3 = tf.histogram_summary(variable.name + "/gradient_norm", clip_ops.global_norm([grad_values]))
-  
+
 """Load the data"""
 dummy = True
 if dummy:
@@ -156,26 +159,29 @@ perf_collect = np.zeros((3,int(np.floor(max_iterations /100))))
 with tf.Session() as session:
   writer = tf.train.SummaryWriter("/home/rob/Dropbox/ml_projects/LSTM/log_tb", session.graph_def)
   tf.initialize_all_variables().run()
-  
-  
+
+
   step = 0
   for i in range(max_iterations):
-    
+
     # Calculate some sizes
     N = X_train.shape[0]
-    
+
     #Sample batch for training
     X_batch, y_batch = sample_batch(X_train,y_train,batch_size,num_steps)
     state = initial_state.eval()  #Fire up the LSTM
-    
+
     #Next line does the actual training
-    session.run(train_op,feed_dict = {input_data: X_batch,targets: y_batch,initial_state: state,keep_prob:0.5})
+    session.run(train_op,feed_dict = {input_data: X_batch,targets: y_batch,initial_state: state,keep_prob:dropout})
     if i==0:
         # Uset this line to check before-and-after test accuracy
         acc_test_before = check_test(X_test,y_test,batch_size,num_steps)
+        result = session.run([size1,size2],feed_dict = {input_data: X_batch,targets: y_batch,initial_state: state,keep_prob:dropout})
+        print(result[0])
+        print(result[1])
     if i%100 == 0:
       #Evaluate training performance
-      X_batch, y_batch = sample_batch(X_train,y_train,batch_size,num_steps)                           
+      X_batch, y_batch = sample_batch(X_train,y_train,batch_size,num_steps)
       cost_out = session.run(cost,feed_dict = {input_data: X_batch, targets: y_batch, initial_state:state,keep_prob:1})
       perf_collect[0,step] = cost_out
       #print('At %d out of %d train cost is %.3f' %(i,max_iterations,cost_out)) #Uncomment line to follow train cost
@@ -188,12 +194,12 @@ with tf.Session() as session:
       acc_val = result[2]
       perf_collect[2,step] = acc_val
       print('At %d out of %d val cost is %.3f and val acc is %.3f' %(i,max_iterations,cost_out,acc_val))
-      
+
       #Write information to TensorBoard
       summary_str = result[1]
       writer.add_summary(summary_str, i)
       writer.flush()
-      
+
       step +=1
   acc_test = check_test(X_test,y_test,batch_size,num_steps)
 
