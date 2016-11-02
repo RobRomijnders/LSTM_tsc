@@ -145,7 +145,7 @@ sess.run(tf.initialize_all_variables())
 
 
 step = 0
-cost_train_ma = -np.log(1/float(num_classes)+1e-9)
+cost_train_ma = -np.log(1/float(num_classes)+1e-9)  #Moving average training cost
 for i in range(max_iterations):
   # Calculate some sizes
   N = X_train.shape[0]
