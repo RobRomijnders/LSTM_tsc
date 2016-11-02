@@ -31,7 +31,7 @@ def check_test(X_test,y_test,batch_size,num_steps):
   test_acc = np.zeros(num_batch)
   for i in range(int(num_batch)):
     X_batch, y_batch = sample_batch(X_test,y_test,batch_size,num_steps)
-    test_acc[i] = sess.run(accuracy,feed_dict = {input_data: X_batch, targets: y_batch, initial_state:state,keep_prob:1})
+    test_acc[i] = sess.run(accuracy,feed_dict = {input_data: X_batch, targets: y_batch,keep_prob:1})
   return np.mean(test_acc)
 
 
