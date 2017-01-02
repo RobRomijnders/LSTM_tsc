@@ -1,5 +1,3 @@
-
-
 """
 LSTM for time series classification
 Made: 30 march 2016
