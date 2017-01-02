@@ -9,3 +9,4 @@ CNN_*
 /imdb.py
 /reader.py
 /ptb_word_lm.py
+*.pyc
