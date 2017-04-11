@@ -1,3 +1,6 @@
+### Update 10-April-2017
+And now it works with Python3 and Tensorflow 1.1.0
+
 ### Update 02-Jan-2017
 I updated this repo. Now it works with Tensorflow 0.12. In this readme I comment on some new benchmarks
 
