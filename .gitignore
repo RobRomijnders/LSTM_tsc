@@ -4,9 +4,12 @@
 /conv_lstm_log_tb
 
 /visualize_ucr_data.m
+/.idea
 saved_*
 CNN_*
 /imdb.py
 /reader.py
 /ptb_word_lm.py
 *.pyc
+/__pycache__
+_config.yml

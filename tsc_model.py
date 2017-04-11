@@ -22,6 +22,8 @@ tf.logging.set_verbosity(tf.logging.ERROR)
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.contrib.rnn import LSTMCell
+from tensorflow.contrib.rnn.python.ops import core_rnn
 
 def load_data(direc,ratio,dataset):
   """Input:
@@ -53,20 +55,7 @@ def sample_batch(X_train,y_train,batch_size):
   X_batch = X_train[ind_N]
   y_batch = y_train[ind_N]
   return X_batch,y_batch
-  
-  
-def check_test(model,sess,X_test,y_test):
-  batch_size = model.batch_size
-  N = X_test.shape[0]
-  runs = int(np.floor(float(N)/batch_size))
-  
-  perfs = []
-  for i in xrange(runs):
-    X_batch,y_batch = sample_batch(X_test,y_test,batch_size)
-    result = sess.run([model.cost,model.accuracy],feed_dict = {model.input: X_batch, model.labels: y_batch, model.keep_prob:1.0})
-    perfs.append(tuple(result))
-  acc,cost = [np.mean(x) for x in zip(*perfs)]
-  return acc,cost
+
 
 class Model():
   def __init__(self,config):
@@ -84,13 +73,14 @@ class Model():
     self.keep_prob = tf.placeholder("float", name = 'Drop_out_keep_prob')
 
     with tf.name_scope("LSTM_setup") as scope:
-      cell = tf.nn.rnn_cell.LSTMCell(hidden_size)
-      cell = tf.nn.rnn_cell.DropoutWrapper(cell, output_keep_prob=self.keep_prob)
-      cell = tf.nn.rnn_cell.MultiRNNCell([cell] * num_layers)
+      def single_cell():
+        return tf.contrib.rnn.DropoutWrapper(LSTMCell(hidden_size),output_keep_prob=self.keep_prob)
+
+      cell = tf.contrib.rnn.MultiRNNCell([single_cell() for _ in range(num_layers)])
       initial_state = cell.zero_state(self.batch_size, tf.float32)
     
     input_list = tf.unstack(tf.expand_dims(self.input,axis=2),axis=1)
-    outputs,_ = tf.nn.seq2seq.rnn_decoder(input_list,initial_state,cell)
+    outputs,_ = core_rnn.static_rnn(cell, input_list, dtype=tf.float32)
 
     output = outputs[-1]
 
@@ -104,11 +94,13 @@ class Model():
         softmax_b = tf.get_variable("softmax_b", [num_classes])
       logits = tf.nn.xw_plus_b(output, softmax_w, softmax_b)
       #Use sparse Softmax because we have mutually exclusive classes
-      loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits,self.labels,name = 'softmax')
+      loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits,labels=self.labels,name = 'softmax')
       self.cost = tf.reduce_sum(loss) / self.batch_size
     with tf.name_scope("Evaluating_accuracy") as scope:
       correct_prediction = tf.equal(tf.argmax(logits,1),self.labels)
       self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
+      h1 = tf.summary.scalar('accuracy',self.accuracy)
+      h2 = tf.summary.scalar('cost', self.cost)
 
 
     """Optimizer"""
@@ -121,19 +113,20 @@ class Model():
       # Add histograms for variables, gradients and gradient norms.
       # The for-loop loops over all entries of the gradient and plots
       # a histogram. We cut of
-      for gradient, variable in gradients:  #plot the gradient of each trainable variable
-            if isinstance(gradient, ops.IndexedSlices):
-              grad_values = gradient.values
-            else:
-              grad_values = gradient
-
-            tf.summary.histogram(variable.name, variable)
-            tf.summary.histogram(variable.name + "/gradients", grad_values)
-            tf.summary.histogram(variable.name + "/gradient_norm", clip_ops.global_norm([grad_values]))
+      # for gradient, variable in gradients:  #plot the gradient of each trainable variable
+      #       if isinstance(gradient, ops.IndexedSlices):
+      #         grad_values = gradient.values
+      #       else:
+      #         grad_values = gradient
+      #
+      #       tf.summary.histogram(variable.name, variable)
+      #       tf.summary.histogram(variable.name + "/gradients", grad_values)
+      #       tf.summary.histogram(variable.name + "/gradient_norm", clip_ops.global_norm([grad_values]))
 
     #Final code for the TensorBoard
     self.merged = tf.summary.merge_all()
     self.init_op = tf.global_variables_initializer()
+    print('Finished computation graph')
 
 
 
