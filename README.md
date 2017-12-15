@@ -21,4 +21,6 @@ This code works amongst others for
 # Credits
 Credits for this project go to [Tensorflow](https://www.tensorflow.org/versions/r0.7/tutorials/recurrent/index.html#recurrent-neural-networks) for providing a strong example, the [UCR archive](http://www.cs.ucr.edu/~eamonn/time_series_data/) for the dataset and my friend Ryan for strong feedback.
 
+License is in `LICENSE.txt`
+
 As always, I am curious to any comments and questions. Reach me at romijndersrob@gmail.com
